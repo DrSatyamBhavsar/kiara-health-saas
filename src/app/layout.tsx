@@ -1,8 +1,10 @@
 import React from 'react';
 import Link from 'next/link';
 import './globals.css';
+import { Metadata } from 'next';
 
-export const metadata = {
+// This metadata object defines the title and SEO settings
+export const metadata: Metadata = {
   title: 'Kiara Health SaaS',
   description: 'AI-Powered Clinical Support',
 };
@@ -19,17 +21,20 @@ export default function RootLayout({
         <nav className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
           <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
             
-            {/* Logo Area */}
-            <div className="flex items-center gap-2">
+            {/* CLICKABLE LOGO AREA */}
+            <Link 
+              href="/" 
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+            >
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
                 K
               </div>
               <span className="text-xl font-bold text-slate-800 tracking-tight">
                 Kiara<span className="text-blue-600">Health</span>
               </span>
-            </div>
+            </Link>
 
-            {/* Navigation Links */}
+            {/* NAVIGATION LINKS */}
             <div className="flex gap-6">
               <Link 
                 href="/diagnostics" 
@@ -45,15 +50,15 @@ export default function RootLayout({
               </Link>
             </div>
 
-            {/* Profile / Logout Placeholder */}
-            <div className="text-sm text-slate-500">
+            {/* PROFILE INDICATOR */}
+            <div className="text-sm text-slate-500 font-medium">
               Dr. Satyamkumar
             </div>
           </div>
         </nav>
 
-        {/* --- PAGE CONTENT GOES HERE --- */}
-        <main className="pt-4">
+        {/* PAGE CONTENT */}
+        <main className="min-h-screen">
           {children}
         </main>
       </body>
