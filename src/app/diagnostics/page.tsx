@@ -1,19 +1,19 @@
 "use client";
 
 import React, { useState } from 'react';
-import { db } from '../firebase'; // <--- Import the database
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'; // <--- Database tools
+import { db } from '../firebase'; 
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { jsPDF } from "jspdf"; // <--- NEW: Import PDF tool
 
-// --- PASTE YOUR AIZA KEY HERE ---
 const API_KEY = "AIzaSyCm3EYpgraak6tHjbA1XMqzmHIhTPaXTRY"; 
 
 export default function AIDiagnosticsPage() {
   const [symptoms, setSymptoms] = useState('');
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false); // <--- New state for saving
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = useState<string | null>(null); // <--- "Saved Successfully" message
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   const handleAnalyze = async () => {
     if (!symptoms) return;
@@ -23,134 +23,97 @@ export default function AIDiagnosticsPage() {
     setSaveStatus(null);
 
     try {
-      const modelToUse = "models/gemini-1.5-flash";
-
-      const runAI = async (modelName: string) => {
-        const prompt = `Act as a Senior Chief Medical Officer. Analyze these symptoms: "${symptoms}". 
-        Format the response in valid HTML with these 3 sections (use <h3> tags):
-        1. Differential Diagnosis
-        2. Recommended Tests
-        3. Red Flags`;
-        
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-          }
-        );
-
-        if (!response.ok) {
-          if (response.status === 404) throw new Error("404_MODEL_NOT_FOUND");
-          const err = await response.json();
-          throw new Error(err.error?.message || "Unknown Error");
+      const prompt = `Act as a Senior Chief Medical Officer. Analyze: "${symptoms}". 
+      Format: Clean text with headers for Diagnosis, Tests, and Red Flags. No HTML tags for PDF compatibility.`;
+      
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         }
-        return response.json();
-      };
+      );
 
-      try {
-        const data = await runAI(modelToUse);
-        setResult(data.candidates[0].content.parts[0].text);
-      } catch (err: any) {
-        if (err.message === "404_MODEL_NOT_FOUND") {
-          // Auto-detect fallback
-          const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
-          const listData = await listResp.json();
-          const validModel = listData.models.find((m: any) => m.name.includes("gemini") && m.supportedGenerationMethods?.includes("generateContent"));
-          if (validModel) {
-            const data = await runAI(validModel.name);
-            setResult(data.candidates[0].content.parts[0].text);
-          } else { throw new Error("No compatible AI models found."); }
-        } else { throw err; }
-      }
+      const data = await response.json();
+      setResult(data.candidates[0].content.parts[0].text);
     } catch (err: any) {
-      console.error(err);
       setError("Analysis Failed: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // --- NEW: FUNCTION TO SAVE TO DATABASE ---
+  // --- NEW: PDF DOWNLOAD FUNCTION ---
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(20);
+    doc.text("Kiara Health - Clinical Report", 20, 20);
+    doc.setFontSize(12);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 30);
+    doc.text(`Patient Symptoms: ${symptoms}`, 20, 40);
+    doc.line(20, 45, 190, 45); // Draw a line
+    
+    // Split text so it doesn't run off the page
+    const splitText = doc.splitTextToSize(result || "", 170);
+    doc.text(splitText, 20, 55);
+    
+    doc.save("Clinical_Report.pdf");
+  };
+
   const handleSave = async () => {
     if (!result || !symptoms) return;
     setSaving(true);
-    
     try {
-      // Create a collection called "patient_reports"
       await addDoc(collection(db, "patient_reports"), {
-        symptoms: symptoms,
+        symptoms,
         diagnosisHtml: result,
-        createdAt: serverTimestamp(), // Saves the exact time
-        doctor: "Dr. Satyamkumar", // You can make this dynamic later
-        status: "Draft"
+        createdAt: serverTimestamp(),
+        doctor: "Dr. Satyamkumar",
+        status: "Completed"
       });
-      
-      setSaveStatus("✅ Report Saved to Patient History!");
-    } catch (err: any) {
-      console.error("Database Error:", err);
-      setError("Failed to save: " + err.message);
+      setSaveStatus("✅ Saved!");
+    } catch (err) {
+      setError("Save failed");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8 font-sans">
+    <div className="min-h-screen bg-slate-50 p-8">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="bg-blue-600 text-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">AI Diagnostic Assistant</h1>
-            <p className="text-blue-100">Clinical Decision Support</p>
-          </div>
-          <div className="text-right text-sm opacity-80">
-            Connected to Database 🟢
-          </div>
+        <div className="bg-blue-600 text-white p-6 rounded-2xl shadow-lg">
+          <h1 className="text-3xl font-bold">AI Diagnostic Assistant</h1>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <label className="block text-slate-700 font-semibold mb-2">Patient Symptoms</label>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border">
           <textarea
-            className="w-full p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none h-32 text-lg"
-            placeholder="E.g., 45yo male, chest pain..."
+            className="w-full p-4 border rounded-xl h-32"
+            placeholder="Describe symptoms..."
             value={symptoms}
             onChange={(e) => setSymptoms(e.target.value)}
           />
           <button
             onClick={handleAnalyze}
-            disabled={loading}
-            className={`mt-4 w-full py-4 rounded-xl text-white font-bold text-lg transition-all
-              ${loading ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700 shadow-md'}
-            `}
+            className="mt-4 w-full py-4 bg-blue-600 text-white rounded-xl font-bold"
           >
-            {loading ? 'Analyzing...' : 'Analyze Clinical Data'}
+            {loading ? 'Analyzing...' : 'Analyze Symptoms'}
           </button>
-          
-          {error && <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-xl border border-red-200">{error}</div>}
         </div>
 
         {result && (
-          <div className="bg-white p-8 rounded-2xl shadow-lg border-t-4 border-blue-500 animate-fade-in">
-            <div className="flex items-center justify-between border-b pb-4 mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Analysis Result</h2>
-              
-              {/* --- NEW SAVE BUTTON --- */}
-              <button 
-                onClick={handleSave}
-                disabled={saving || saveStatus !== null}
-                className={`px-6 py-2 rounded-lg font-bold text-white transition-all 
-                  ${saveStatus ? 'bg-green-600' : 'bg-indigo-600 hover:bg-indigo-700'}
-                `}
-              >
-                {saving ? 'Saving...' : saveStatus ? saveStatus : '💾 Save to History'}
+          <div className="bg-white p-8 rounded-2xl shadow-lg border-t-4 border-blue-500">
+            <div className="flex gap-2 mb-6">
+              <button onClick={handleSave} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold">
+                {saveStatus || 'Save to History'}
+              </button>
+              {/* PDF BUTTON */}
+              <button onClick={handleDownloadPDF} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold">
+                📥 Download PDF
               </button>
             </div>
-            
-            <div 
-              className="prose prose-blue max-w-none text-slate-700"
-              dangerouslySetInnerHTML={{ __html: result }} 
-            />
+            <div className="whitespace-pre-wrap text-slate-700">{result}</div>
           </div>
         )}
       </div>
